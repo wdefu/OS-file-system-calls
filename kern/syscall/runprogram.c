@@ -45,6 +45,11 @@
 #include <syscall.h>
 #include <test.h>
 
+
+
+#include <syscall.h>
+#include <file.h>
+
 /*
  * Load program "progname" and start running it in usermode.
  * Does not return except on error.

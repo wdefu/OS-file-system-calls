@@ -17,7 +17,7 @@
 #include <proc.h>
 
 #define OPEN_MAX2 10 // for debug
-#define IS_DEBUG_FILEDESCRIPTOR 0 // 1 to enable show_of_table() and show_fd_table(). 
+#define IS_DEBUG_FILEDESCRIPTOR 1 // 1 to enable show_of_table() and show_fd_table(). 
 /*
  * Add your file-related functions here ...
  */
@@ -41,7 +41,7 @@ int sys_open(const char *filename, int flags, mode_t mode){
     struct vnode *v;
     /* copy filename */
     char *filename_copy = kmalloc((strlen(filename) + 5) * sizeof(char));
-    strcpy(filename_copy,filename_copy);
+    strcpy(filename_copy, filename);
      
     /* check whether current of is full of not */
     int of_free_slot = get_of_table_free_slot(cur_of_table);// get free slot from the queue
@@ -59,19 +59,20 @@ int sys_open(const char *filename, int flags, mode_t mode){
     int result = vfs_open(filename_copy,flags,mode,&v);
     kfree(filename_copy);
     if (IS_DEBUG_FILEDESCRIPTOR){
-        kprintf("\n\n-----------------opening %s: -------------------\n", filename_copy);
+        kprintf("\n\n-----------------opening %s: -------------------\n", filename);
     }
     if (result) {
         kprintf("vfs open failed: filename = %s\nflag = %d, mode = %u, error = %d", filename, flags, mode, result);
         return result;
     }
+    //kprintf("I am still alive\n");
 
     /* update of table */
     cur_of_table->fp[of_free_slot] = 0;
     cur_of_table->v_ptr[of_free_slot] = v;
     cur_of_table->availability[of_free_slot] = OCCUPIED;
     cur_of_table->refcount[of_free_slot] = 1;
-
+    cur_of_table->flags[of_free_slot] = flags;
     /* update fd table */
     curproc->fd_tbl->of_ptr[fd_free_slot] = of_free_slot;
     curproc->fd_tbl->availability[fd_free_slot] = OCCUPIED;
@@ -141,9 +142,10 @@ int sys_read(int filehandle, void *buf, size_t size){
 }
 
 
-int sys_write(int filehandle, const_userptr_t buf, size_t size){
+int sys_write(int filehandle, const_userptr_t buf, size_t size, int *err){
     /*return value*/
     int result = 0;
+    *err = 0;
     
     /* check the file pointer */
     if (curproc->fd_tbl->availability[filehandle] == FREE){
@@ -170,33 +172,44 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size){
         return -1;
     }
 
-    struct stat cur_file_stat;
+
+    // I don't know why this always fail. May instead to put read/write mode in of_table
     /* get the stat of current file first */
+    /*struct stat cur_file_stat;
     result = VOP_STAT(cur_of_table->v_ptr[of_index],&cur_file_stat);
     if (result){
         return result;
     }
+
     int how = cur_file_stat.st_mode&O_ACCMODE;
     switch(how){
         case O_WRONLY:
         case O_RDWR:
         break;
         default:
+        kprintf("not suporting writing! cur_file_stat.st_mode = 0x%x,  how = %d\n", cur_file_stat.st_mode, how);
         return EBADF;
+    }*/
+    int how = cur_of_table->flags[of_index]&O_ACCMODE;
+    if (how == O_RDONLY){
+        kprintf("not suporting writing! flags = 0x%x,  how = %d\n", cur_of_table->flags[of_index], how);
+        *err = EBADF;
+        return -1;
     }
+    
     
     // initialize uio
     struct iovec *iov = kmalloc(sizeof(struct iovec));
     struct uio *u = kmalloc(sizeof(struct uio)); 
     uio_kinit(iov, u, (void *)duplicate_str, size, cur_of_table->fp[of_index], UIO_WRITE);
     
-    int err = VOP_WRITE(cur_of_table->v_ptr[of_index], u);
+    *err = VOP_WRITE(cur_of_table->v_ptr[of_index], u);
     kfree(duplicate_str);
     kfree(iov);
     kfree(u);
-    if (err) {
-        kprintf("some error in write(): retval is %d\n", err);
-        return err;
+    if (*err) {
+        kprintf("some error in write(): retval is %d\n", *err);
+        return -1;
     }
     if(filehandle > 2) kprintf("write return size = %d\n", size);
     cur_of_table->fp[of_index] += size;
@@ -380,6 +393,7 @@ struct of_table * create_of_table(void){
     KASSERT(of != NULL);
     of->fp = kmalloc(sizeof(off_t) * OPEN_MAX2);
     of->v_ptr = kmalloc(sizeof(struct vnode) * OPEN_MAX2);
+    of->flags = kmalloc(sizeof(mode_t) * OPEN_MAX2);
     of->free_slots = kmalloc(sizeof(int) * OPEN_MAX2);
     of->availability= kmalloc(sizeof(int8_t) * OPEN_MAX2);
     of->size = 0;
@@ -474,7 +488,8 @@ void show_of_table(void){
     for (i = 0; i < OPEN_MAX2; i++){
         kprintf("position %d: ", i);
         if (table->availability[i] == FREE) kprintf("free\n");
-        else    kprintf("fp = %lld, vnode = %x : %d\n", table->fp[i], (unsigned int)table->v_ptr[i], table->v_ptr[i]->vn_refcount);
+        else    kprintf("fp = %lld, vnode = %x : %d, flags = 0x%x\n", table->fp[i], (unsigned int)table->v_ptr[i], 
+            table->v_ptr[i]->vn_refcount, table->flags[i]);
     }
 }
 void show_fd_table(void){
