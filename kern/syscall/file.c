@@ -16,8 +16,10 @@
 #include <copyinout.h>
 #include <proc.h>
 
+//#define OPEN_MAX2 OPEN_MAX 
 #define OPEN_MAX2 10 // for debug
-#define IS_DEBUG_FILEDESCRIPTOR 1 // 1 to enable show_of_table() and show_fd_table(). 
+#define IS_DEBUG_FILEDESCRIPTOR 0 // 1 to enable show_of_table() and show_fd_table(). 
+#define DEBUG_MODE 1 // several printf for err
 /*
  * Add your file-related functions here ...
  */
@@ -29,7 +31,6 @@ int get_of_table_free_slot(struct of_table *table);
 int get_fd_table_free_slot(struct fd_table *table);
 int push_of_empty_free_slot(struct of_table *table, int element);
 int push_fd_empty_free_slot(struct fd_table *table, int element);
-
 
 
 int sys_open(const char *filename, int flags, mode_t mode){
@@ -62,7 +63,7 @@ int sys_open(const char *filename, int flags, mode_t mode){
         kprintf("\n\n-----------------opening %s: -------------------\n", filename);
     }
     if (result) {
-        kprintf("vfs open failed: filename = %s\nflag = %d, mode = %u, error = %d", filename, flags, mode, result);
+        if (DEBUG_MODE) kprintf("vfs open failed: filename = %s\nflag = %d, mode = %u, error = %d", filename, flags, mode, result);
         return result;
     }
     //kprintf("I am still alive\n");
@@ -90,20 +91,20 @@ int sys_read(int filehandle, void *buf, size_t size){
 
     /* check availability of filehandle*/
     if (curproc->fd_tbl->availability[filehandle] == FREE){
-        kprintf("can't read fd = %d : this fd is free\n", filehandle);
+        if (DEBUG_MODE) kprintf("can't read fd = %d : this fd is free\n", filehandle);
         return EBADF;
     }
     
 
     /* check whether buffer is available */
     if (buf == NULL){
-        kprintf("the buffer is not available or the size is not available\n");
+        if (DEBUG_MODE) kprintf("the buffer is not available or the size is not available\n");
         return EFAULT;
     }
     /* check availability of open file entry */
     int of_index = curproc->fd_tbl->of_ptr[filehandle];
     if (cur_of_table->availability[of_index] == FREE){
-        kprintf("can't read of = %d : this of is free\n", of_index);
+        if (DEBUG_MODE) kprintf("can't read of = %d : this of is free\n", of_index);
         return EBADF;
     }
 
@@ -132,7 +133,7 @@ int sys_read(int filehandle, void *buf, size_t size){
     kfree(iov);
     kfree(u);
     if (err) {
-        kprintf("some error in read(): retval is %d\n",err);
+        if (DEBUG_MODE) kprintf("some error in read(): retval is %d\n",err);
         return err;
     }
     
@@ -149,14 +150,16 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size, int *err){
     
     /* check the file pointer */
     if (curproc->fd_tbl->availability[filehandle] == FREE){
-        kprintf("can't read fd = %d : this fd is free\n", filehandle);
+        if (DEBUG_MODE) kprintf("can't read fd = %d : this fd is free\n", filehandle);
+        *err = EBADF;
         return -1;
     }
 
     /* check whether buffer is available */
     if (buf == NULL){
-        kprintf("the buffer is not available or the size is not available\n");
-        return EFAULT;
+        if (DEBUG_MODE) kprintf("the buffer is not available or the size is not available\n");
+        *err = EFAULT;
+        return -1;
     }
     // duplicate string
     const char *str = (const char *)buf; // may need to replace this duplication into copyinstr
@@ -168,31 +171,32 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size, int *err){
 
     int of_index = curproc->fd_tbl->of_ptr[filehandle];
     if (cur_of_table->availability[of_index] == FREE){
-        kprintf("can't read of = %d : this of is free\n", of_index);
+        if (DEBUG_MODE) kprintf("can't read of = %d : this of is free\n", of_index);
+        *err = EBADF;
         return -1;
     }
 
 
     // I don't know why this always fail. May instead to put read/write mode in of_table
     /* get the stat of current file first */
-    /*struct stat cur_file_stat;
-    result = VOP_STAT(cur_of_table->v_ptr[of_index],&cur_file_stat);
-    if (result){
-        return result;
-    }
+    // struct stat cur_file_stat;
+    // result = VOP_STAT(cur_of_table->v_ptr[of_index],&cur_file_stat);
+    // if (result){
+    //     return result;
+    // }
 
-    int how = cur_file_stat.st_mode&O_ACCMODE;
-    switch(how){
-        case O_WRONLY:
-        case O_RDWR:
-        break;
-        default:
-        kprintf("not suporting writing! cur_file_stat.st_mode = 0x%x,  how = %d\n", cur_file_stat.st_mode, how);
-        return EBADF;
-    }*/
+    // int how = cur_file_stat.st_mode&O_ACCMODE;
+    // switch(how){
+    //     case O_WRONLY:
+    //     case O_RDWR:
+    //     break;
+    //     default:
+    //     kprintf("not suporting writing! cur_file_stat.st_mode = 0x%x,  how = %d\n", cur_file_stat.st_mode, how);
+    //     return EBADF;
+    // }
     int how = cur_of_table->flags[of_index]&O_ACCMODE;
     if (how == O_RDONLY){
-        kprintf("not suporting writing! flags = 0x%x,  how = %d\n", cur_of_table->flags[of_index], how);
+        if (DEBUG_MODE) kprintf("not suporting writing! flags = 0x%x,  how = %d\n", cur_of_table->flags[of_index], how);
         *err = EBADF;
         return -1;
     }
@@ -208,10 +212,10 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size, int *err){
     kfree(iov);
     kfree(u);
     if (*err) {
-        kprintf("some error in write(): retval is %d\n", *err);
+        if (DEBUG_MODE) kprintf("some error in write(): retval is %d\n", *err);
         return -1;
     }
-    if(filehandle > 2) kprintf("write return size = %d\n", size);
+    //if(filehandle > 2) kprintf("write return size = %d\n", size);
     cur_of_table->fp[of_index] += size;
     return result;
 }
@@ -222,19 +226,19 @@ int sys_lseek(int filehandle, off_t pos, int whence){
 
     /* check fd availablity */
     if ((filehandle < 0) || (filehandle > OPEN_MAX2 + 1)){
-        kprintf("unsupported seek object\n");
+        if (DEBUG_MODE) kprintf("unsupported seek object\n");
         return ESPIPE;
     }
 
     /* check filehandle exists or not */
     if (curproc->fd_tbl->availability[filehandle] == FREE){
-        kprintf("can't read fd = %d : this fd is free\n", filehandle);
+        if (DEBUG_MODE) kprintf("can't read fd = %d : this fd is free\n", filehandle);
         return EBADF;
     }
 
     int of_index = curproc->fd_tbl->of_ptr[filehandle];
     if (cur_of_table->availability[of_index] == FREE){
-        kprintf("can't read of = %d : this of is free\n", of_index);
+        if (DEBUG_MODE) kprintf("can't read of = %d : this of is free\n", of_index);
         return EBADF;
     }
 
@@ -290,13 +294,13 @@ int sys_close(int filehandle){
 
     /* check availability of fd table */
     if (curproc->fd_tbl->availability[filehandle] == FREE) {
-        kprintf("ERROR: fd %d is free! can't close\n", filehandle);
+        if (DEBUG_MODE) kprintf("ERROR: fd %d is free! can't close\n", filehandle);
         return EBADF; /* return bad file number*/
     }
 
     int of_index = curproc->fd_tbl->of_ptr[filehandle];
     if (cur_of_table->availability[of_index] == FREE){
-        kprintf("ERROR: of %d is free! can't close\n", of_index);
+        if (DEBUG_MODE) kprintf("ERROR: of %d is free! can't close\n", of_index);
         return EBADF; /* return bad file number */
     }
 
@@ -444,7 +448,7 @@ int queue_push(int *queue, int *end, int *size, int element){
 int get_of_table_free_slot(struct of_table *table){
     int of_free_index = queue_front(table->free_slots, table->front, table->size);
     if (of_free_index == -1) {
-        kprintf("of table is full\n");
+        if (DEBUG_MODE) kprintf("of table is full\n");
         return -1;
     }
     queue_pop(table->free_slots, &(table->front), &(table->size));
@@ -455,7 +459,7 @@ int get_of_table_free_slot(struct of_table *table){
 int get_fd_table_free_slot(struct fd_table *table){
     int of_free_index = queue_front(table->free_slots, table->front, table->size);
     if (of_free_index == -1) {
-        kprintf("of table is full\n");
+        if (DEBUG_MODE) kprintf("of table is full\n");
         return -1;
     }
     queue_pop(table->free_slots, &(table->front), &(table->size));
@@ -466,12 +470,12 @@ int get_fd_table_free_slot(struct fd_table *table){
 
 int push_of_empty_free_slot(struct of_table *table, int element){
     int retval = queue_push(table->free_slots, &(table->end), &(table->size), element);
-    if (retval == -1) kprintf("of table free slot is full, can't push");
+    if (retval == -1 && DEBUG_MODE) kprintf("of table free slot is full, can't push");
     return retval;
 }
 int push_fd_empty_free_slot(struct fd_table *table, int element){
     int retval = queue_push(table->free_slots, &(table->end), &(table->size), element);
-    if (retval == -1) kprintf("fd table free slot is full, can't push");
+    if (retval == -1 && DEBUG_MODE) kprintf("fd table free slot is full, can't push");
     return retval;
 }
 
