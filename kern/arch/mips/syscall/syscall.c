@@ -112,26 +112,41 @@ syscall(struct trapframe *tf)
 
 		case SYS_open:
 		err = sys_open(tf->tf_a0,tf->tf_a1,tf->tf_a2);
+		retval = err;
+		if(err > 0){
+			err = 0;  // check returned value 
+		}
 		break;
 
 		case SYS_read:
 		err = sys_read(tf->tf_a0,tf->a1,tf->a2);
+		retval = tf->a2;
+		if (err >= 0){
+			err = 0;
+		}
 		break;
 
 		case SYS_write:
 		err = sys_write(tf->tf_a0,tf->a1,tf->a2);
+		retval = tf->a2;
+		if (err >= 0){
+			err = 0;
+		}
 		break;
 
 		case SYS_lseek:
 		err = sys_lseek(tf->tf_a0,tf->a1,tf->a2);
+		retval = tf->a1;
 		break;
 
 		case SYS_close:
 		err = sys_close(tf->tf_a0);
+		retval = err;
 		break;
 
 		case SYS_dup2:
 		err = sys_dupw(tf->tf_a0,tf->tf_a1);
+		retval = tf->tf_a1;
 		break;
 
 	    /* Add stuff here */

@@ -5,6 +5,8 @@
 #ifndef _FILE_H_
 #define _FILE_H_
 
+#define FREE 0
+#define OCCUPIED 1
 /*
  * Contains some file-related maximum length constants
  */

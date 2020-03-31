@@ -14,10 +14,23 @@
 #include <file.h>
 #include <syscall.h>
 #include <copyinout.h>
+#include <proc.h>
 
+#define OPEN_MAX2 10 // for debug
+#define IS_DEBUG_FILEDESCRIPTOR 0 // 1 to enable show_of_table() and show_fd_table(). 
 /*
  * Add your file-related functions here ...
  */
+ 
+int queue_pop(int *queue, int *front, int *size); // return 0 if non-empty, -1 else
+int queue_front(int *queue, int front, int size); // return queue[front] if non-empty, -1 else
+int queue_push(int *queue, int *end, int *size, int element); // return 0 if not full, -1 else
+int get_of_table_free_slot(struct of_table *table);
+int get_fd_table_free_slot(struct fd_table *table);
+int push_of_empty_free_slot(struct of_table *table, int element);
+int push_fd_empty_free_slot(struct fd_table *table, int element);
+
+
 
 int sys_open(const char *filename, int flags, mode_t mode){
     /* if filename is null return error */
@@ -70,6 +83,9 @@ int sys_open(const char *filename, int flags, mode_t mode){
 
 
 ssize_t sys_read(int filehandle, void *buf, size_t size){
+    /*return value*/
+    int result = 0;
+
     /* check availability of filehandle*/
     if (curproc->fd_tbl->availability[filehandle] == FREE){
         kprintf("can't read fd = %d : this fd is free\n", filehandle);
@@ -103,12 +119,14 @@ ssize_t sys_read(int filehandle, void *buf, size_t size){
     
     /* should add handler for remain of u.uio_resid here */
     cur_of_table->fp[of_index] += size;
-    return size;
-
+    return result;
 }
 
 
 ssize_t sys_write(int filehandle, const_userptr_t buf, size_t size){
+    /*return value*/
+    int result = 0;
+    
     /* check the file pointer */
     if (curproc->fd_tbl->availability[filehandle] == FREE){
         kprintf("can't read fd = %d : this fd is free\n", filehandle);
@@ -148,12 +166,12 @@ ssize_t sys_write(int filehandle, const_userptr_t buf, size_t size){
     }
     if(filehandle > 2) kprintf("write return size = %d\n", size);
     cur_of_table->fp[of_index] += size;
-    return size;
+    return result;
 }
 
 off_t sys_lseek(int filehandle, off_t pos, int whence){
-
-    int result;
+    /* returned value */
+    int result = 0;
 
     /* check fd availablity */
     if (filehandle < 0 || fd >OPEN_MAX2 + 1){
@@ -174,9 +192,9 @@ off_t sys_lseek(int filehandle, off_t pos, int whence){
     }
 
     /* check vnode seekablity */
-    if (!VOP_ISSEEKABLE(cur_of_table->v_ptr[of_index]){
+    if (!VOP_ISSEEKABLE(cur_of_table->v_ptr[of_index])){
         return ESPIPE;
-    })
+    }
 
     struct stat curr_file_stat;
     /* get the stat of current file first */
@@ -218,6 +236,9 @@ off_t sys_lseek(int filehandle, off_t pos, int whence){
 
 
 int sys_close(int filehandle){
+    /* returned value */
+    int result = 0;
+
     if (IS_DEBUG_FILEDESCRIPTOR) kprintf("\n\n-----------------closing fd %d: -------------------------\n", filehandle);
 
     /* check availability of fd table */
@@ -252,8 +273,7 @@ int sys_close(int filehandle){
     if (IS_DEBUG_FILEDESCRIPTOR) show_of_table(); // debug code: show the status of of_table
     if (IS_DEBUG_FILEDESCRIPTOR) show_fd_table(); // debug code: show the status of fd_table
 
-
-
+    return result;
 }
 
 
@@ -295,4 +315,118 @@ int sys_dup2(int filehandle, int newhandle){
     }
 
     return result;
+}
+
+
+struct of_table * create_of_table(void){
+    struct of_table *of = kmalloc(sizeof(struct of_table));
+    KASSERT(of != NULL);
+    of->fp = kmalloc(sizeof(off_t) * OPEN_MAX2);
+    of->v_ptr = kmalloc(sizeof(struct vnode) * OPEN_MAX2);
+    of->free_slots = kmalloc(sizeof(int) * OPEN_MAX2);
+    of->availability= kmalloc(sizeof(int8_t) * OPEN_MAX2);
+    of->size = 0;
+    of->front = 0;
+    of->end = 0;
+
+    int i;
+    for (i = 0; i < OPEN_MAX2; i++){
+        queue_push(of->free_slots, &(of->end), &(of->size), i);
+        of->availability[i] = FREE;
+    }
+    return of;
+}
+
+
+
+
+
+
+// queue operations
+int queue_pop(int *queue, int *front, int *size){
+    (void) queue;
+    if (*size > 0){
+        if (++*front >= OPEN_MAX2) *front = 0; // circular increament
+        --*size;
+        return 0;
+    }
+    else return -1;
+}
+
+int queue_front(int *queue, int front, int size){
+    return (size > 0) ? queue[front] : -1;
+}
+
+int queue_push(int *queue, int *end, int *size, int element){
+    if (*size < OPEN_MAX2){
+        queue[*end] = element;
+        if (++*end >= OPEN_MAX2) *end = 0; // circular increament
+        ++*size;
+        return 0;
+    }
+    else return -1;
+} 
+
+
+int get_of_table_free_slot(struct of_table *table){
+    int of_free_index = queue_front(table->free_slots, table->front, table->size);
+    if (of_free_index == -1) {
+        kprintf("of table is full\n");
+        return -1;
+    }
+    queue_pop(table->free_slots, &(table->front), &(table->size));
+    int free_slot = table->free_slots[of_free_index];
+    return free_slot;
+}
+
+int get_fd_table_free_slot(struct fd_table *table){
+    int of_free_index = queue_front(table->free_slots, table->front, table->size);
+    if (of_free_index == -1) {
+        kprintf("of table is full\n");
+        return -1;
+    }
+    queue_pop(table->free_slots, &(table->front), &(table->size));
+    int free_slot = table->free_slots[of_free_index];
+    return free_slot;
+}
+
+
+int push_of_empty_free_slot(struct of_table *table, int element){
+    int retval = queue_push(table->free_slots, &(table->end), &(table->size), element);
+    if (retval == -1) kprintf("of table free slot is full, can't push");
+    return retval;
+}
+int push_fd_empty_free_slot(struct fd_table *table, int element){
+    int retval = queue_push(table->free_slots, &(table->end), &(table->size), element);
+    if (retval == -1) kprintf("fd table free slot is full, can't push");
+    return retval;
+}
+
+
+// for debugging: show of table and show fd table
+
+
+void show_of_table(void){
+    struct of_table *table = cur_of_table;
+    kprintf("\nShowing open file table:\n");
+    kprintf("free slot queue front index = %d, end index = %d, size = %d\n", table->front, table->end, table->size);
+
+    int i;
+    for (i = 0; i < OPEN_MAX2; i++){
+        kprintf("position %d: ", i);
+        if (table->availability[i] == FREE) kprintf("free\n");
+        else    kprintf("fp = %lld, vnode = %x : %d\n", table->fp[i], (unsigned int)table->v_ptr[i], table->v_ptr[i]->vn_refcount);
+    }
+}
+void show_fd_table(void){
+    struct fd_table *table = curproc->fd_tbl;
+    kprintf("\nShowing file descriptor table:\n");
+    kprintf("free slot queue front index = %d, end index = %d, size = %d\n", table->front, table->end, table->size);
+
+    int i;
+    for (i = 0; i < OPEN_MAX2; i++){
+        kprintf("position %d: ", i);
+        if (table->availability[i] == FREE) kprintf("free\n");
+        else    kprintf("ofptr = %d\n", table->ofptr[i]);
+    }
 }
