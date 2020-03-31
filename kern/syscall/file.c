@@ -34,13 +34,13 @@ int push_fd_empty_free_slot(struct fd_table *table, int element);
 
 int sys_open(const char *filename, int flags, mode_t mode){
     /* if filename is null return error */
-    if (*filename == NULL){
+    if (filename == NULL){
         return ENOENT; //return not a dir error
     }
 
     struct vnode *v;
     /* copy filename */
-    char *filename_copy = kmalloc((strlen(filename) + 5) * sizeof(char))
+    char *filename_copy = kmalloc((strlen(filename) + 5) * sizeof(char));
     strcopy(filename_copy,filename_copy);
      
     /* check whether current of is full of not */
@@ -69,10 +69,10 @@ int sys_open(const char *filename, int flags, mode_t mode){
     /* update of table */
     cur_of_table->fp[of_free_slot] = 0;
     cur_of_table->v_ptr[of_free_slot] = v;
-    cur_of_table_availability[of_free_slot] = OCCUPIED;
+    cur_of_table->availability[of_free_slot] = OCCUPIED;
 
     /* update fd table */
-    curproc->fd_tbl->ofptf[fd_free_slot] = of_free_slot;
+    curproc->fd_tbl->ofptr[fd_free_slot] = of_free_slot;
     curproc->fd_tbl->availability[fd_free_slot] = OCCUPIED;
 
     if (IS_DEBUG_FILEDESCRIPTOR) show_of_table(); // debug code: show the status of of_table
@@ -93,12 +93,12 @@ int sys_read(int filehandle, void *buf, size_t size){
     }
     
     /* check whether buffer is available */
-    if (*buf == NULL || size < 0){
-        kprint("the buffer is not available or the size is not available\n");
+    if (buf == NULL || size < 0){
+        kprintf("the buffer is not available or the size is not available\n");
         return EFAULT;
     }
     /* check availability of open file entry */
-    int of_index = curproc->fd_tbl->ofptf[filehandle];
+    int of_index = curproc->fd_tbl->ofptr[filehandle];
     if (cur_of_table->availability[of_index] == FREE){
         kprintf("can't read of = %d : this of is free\n", of_index);
         return EBADF;
@@ -134,7 +134,7 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size){
     }
 
     /* check whether buffer is available */
-    if (*buf == NULL || size < 0){
+    if (buf == NULL || size < 0){
         kprint("the buffer is not available or the size is not available\n");
         return EFAULT;
     }
@@ -196,9 +196,9 @@ int sys_lseek(int filehandle, off_t pos, int whence){
         return ESPIPE;
     }
 
-    struct stat curr_file_stat;
+    struct stat cur_file_stat;
     /* get the stat of current file first */
-    result = VOP_STAT(curr_of_table[v_ptr[of_index]],&curr_file_stat);
+    result = VOP_STAT(cur_of_table->[v_ptr[of_index]],&cur_file_stat);
     if (result){
         return result;
     }
@@ -211,7 +211,7 @@ int sys_lseek(int filehandle, off_t pos, int whence){
             if(pos < 0){
                 return EINVAL;
             }
-            curr_of_table->fp[of_index] = pos;
+            cur_of_table->fp[of_index] = pos;
             break;
 
         case SEEK_CUR:
@@ -224,10 +224,10 @@ int sys_lseek(int filehandle, off_t pos, int whence){
 
         case SEEK_END:
             /* final fp can't be negative */
-            if(curr_file_stat->st_size + pos < 0){
+            if(cur_file_stat.st_size + pos < 0){
                 return EINVAL;
             }
-            cur_of_table->fp[of_index] = curr_file_stat->st_size + pos;
+            cur_of_table->fp[of_index] = cur_file_stat.st_size + pos;
             break
     }
     
@@ -249,7 +249,7 @@ int sys_close(int filehandle){
 
     int of_index = curproc->fd_tbl->ofptr[filehandle];
     if (cur_of_table->availability[if_index] == FREE){
-        KPRINTF("ERROR: of %d is free! can't close\n", of_index);
+        kprintf("ERROR: of %d is free! can't close\n", of_index);
         return EBADF; /* return bad file number */
     }
 
@@ -260,14 +260,14 @@ int sys_close(int filehandle){
 
     /* check the reference count of curr entry */
     if (cur_of_table[of_index]->refcount > 1){
-        cur_of_table[of_index]->refcount--；
+        cur_of_table[of_index]->refcount--;
     }
     else{
         if (push_of_empty_free_slot(cur_of_table, of_index) == -1){
             return ENFILE; /* return too many global open files */
         }
         cur_of_table->availability[of_index] = FREE; /* set entry free */
-        vfs_close(struct vnode &cur_of_table[of_index]->vptr); /* free the vnode */
+        vfs_close(&cur_of_table[of_index]->vptr); /* free the vnode */
     }
 
     if (IS_DEBUG_FILEDESCRIPTOR) show_of_table(); // debug code: show the status of of_table
@@ -304,7 +304,7 @@ int sys_dup2(int filehandle, int newhandle){
                 return ENFILE; /* return too many global open files */
             }
             cur_of_table->availability[of_index] = FREE; /* set entry free */
-            vfs_close(struct vnode &cur_of_table[of_index]->vptr); /* free the vnode */
+            vfs_close(&cur_of_table[of_index]->vptr); /* free the vnode */
         }
         
         /* make the second fd point to first one */
