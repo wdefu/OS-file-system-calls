@@ -23,7 +23,7 @@
  * struct used to store opened vnode and corresponding file pointers
 */
 struct fd_table {
-    int *ofptr; /* map to the index in of_table */
+    int *of_ptr; /* map to the index in of_table */
     int *free_slots; /* queue of free ofptr */
     int8_t *availability; /* FREE or OCCUPIED: check if ofptr[i] is free or not */
     int size; /* number of free slots */

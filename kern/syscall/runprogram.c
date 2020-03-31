@@ -113,6 +113,8 @@ runprogram(char *progname)
 	fd[1] = sys_open(c1, O_WRONLY, 0); // what does the mode do?
 	fd[2] = sys_open(c2, O_WRONLY, 0); // what does the mode do?
 
+	sys_close(fd[0]);
+
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  NULL /*userspace addr of environment*/,
@@ -120,6 +122,7 @@ runprogram(char *progname)
 
 	/* enter_new_process does not return. */
 	panic("enter_new_process returned\n");
+	kprintf("debug point 8\n");
 	return EINVAL;
 }
 

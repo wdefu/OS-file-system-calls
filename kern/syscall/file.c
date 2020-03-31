@@ -70,10 +70,10 @@ int sys_open(const char *filename, int flags, mode_t mode){
     cur_of_table->fp[of_free_slot] = 0;
     cur_of_table->v_ptr[of_free_slot] = v;
     cur_of_table->availability[of_free_slot] = OCCUPIED;
-    cur_of_table->refcount[of_free_slot] = 1
+    cur_of_table->refcount[of_free_slot] = 1;
 
     /* update fd table */
-    curproc->fd_tbl->ofptr[fd_free_slot] = of_free_slot;
+    curproc->fd_tbl->of_ptr[fd_free_slot] = of_free_slot;
     curproc->fd_tbl->availability[fd_free_slot] = OCCUPIED;
 
     if (IS_DEBUG_FILEDESCRIPTOR) show_of_table(); // debug code: show the status of of_table
@@ -93,15 +93,32 @@ int sys_read(int filehandle, void *buf, size_t size){
         return EBADF;
     }
     
+
     /* check whether buffer is available */
-    if ((buf == NULL) || (size < 0)){
+    if (buf == NULL){
         kprintf("the buffer is not available or the size is not available\n");
         return EFAULT;
     }
     /* check availability of open file entry */
-    int of_index = curproc->fd_tbl->ofptr[filehandle];
+    int of_index = curproc->fd_tbl->of_ptr[filehandle];
     if (cur_of_table->availability[of_index] == FREE){
         kprintf("can't read of = %d : this of is free\n", of_index);
+        return EBADF;
+    }
+
+    /* check mode */
+    struct stat cur_file_stat;
+    /* get the stat of current file first */
+    result = VOP_STAT(cur_of_table->v_ptr[of_index],&cur_file_stat);
+    if (result){
+        return result;
+    }
+    int how = cur_file_stat.st_mode&O_ACCMODE;
+    switch(how){
+        case O_RDONLY:
+        case O_RDWR:
+        break;
+        default:
         return EBADF;
     }
 
@@ -135,7 +152,7 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size){
     }
 
     /* check whether buffer is available */
-    if ((buf == NULL) || (size < 0)){
+    if (buf == NULL){
         kprintf("the buffer is not available or the size is not available\n");
         return EFAULT;
     }
@@ -147,11 +164,27 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size){
         duplicate_str[i] = str[i];
     }// may need to replace this duplication into copyinstr
 
-    int of_index = curproc->fd_tbl->ofptr[filehandle];
+    int of_index = curproc->fd_tbl->of_ptr[filehandle];
     if (cur_of_table->availability[of_index] == FREE){
         kprintf("can't read of = %d : this of is free\n", of_index);
         return -1;
     }
+
+    struct stat cur_file_stat;
+    /* get the stat of current file first */
+    result = VOP_STAT(cur_of_table->v_ptr[of_index],&cur_file_stat);
+    if (result){
+        return result;
+    }
+    int how = cur_file_stat.st_mode&O_ACCMODE;
+    switch(how){
+        case O_WRONLY:
+        case O_RDWR:
+        break;
+        default:
+        return EBADF;
+    }
+    
     // initialize uio
     struct iovec *iov = kmalloc(sizeof(struct iovec));
     struct uio *u = kmalloc(sizeof(struct uio)); 
@@ -176,7 +209,7 @@ int sys_lseek(int filehandle, off_t pos, int whence){
 
     /* check fd availablity */
     if ((filehandle < 0) || (filehandle > OPEN_MAX2 + 1)){
-        kprint("unsupported seek object\n");
+        kprintf("unsupported seek object\n");
         return ESPIPE;
     }
 
@@ -186,7 +219,7 @@ int sys_lseek(int filehandle, off_t pos, int whence){
         return EBADF;
     }
 
-    int of_index = curproc->fd_tbl->ofptr[filehandle];
+    int of_index = curproc->fd_tbl->of_ptr[filehandle];
     if (cur_of_table->availability[of_index] == FREE){
         kprintf("can't read of = %d : this of is free\n", of_index);
         return EBADF;
@@ -248,7 +281,7 @@ int sys_close(int filehandle){
         return EBADF; /* return bad file number*/
     }
 
-    int of_index = curproc->fd_tbl->ofptr[filehandle];
+    int of_index = curproc->fd_tbl->of_ptr[filehandle];
     if (cur_of_table->availability[of_index] == FREE){
         kprintf("ERROR: of %d is free! can't close\n", of_index);
         return EBADF; /* return bad file number */
@@ -260,16 +293,16 @@ int sys_close(int filehandle){
     curproc->fd_tbl->availability[filehandle] = FREE;
 
     /* check the reference count of curr entry */
-    if (cur_of_table[of_index]->refcount > 1){
-        cur_of_table[of_index]->refcount--;
+    if (cur_of_table->refcount[of_index] > 1){
+        cur_of_table->refcount[of_index] --;
     }
     else{
         if (push_of_empty_free_slot(cur_of_table, of_index) == -1){
             return ENFILE; /* return too many global open files */
         }
-        cur_of_table[of_index]->refcount--;
+        cur_of_table->refcount[of_index]--;
         cur_of_table->availability[of_index] = FREE; /* set entry free */
-        vfs_close(&cur_of_table->v_ptr[of_index]); /* free the vnode */
+        vfs_close(cur_of_table->v_ptr[of_index]); /* free the vnode */
     }
 
     if (IS_DEBUG_FILEDESCRIPTOR) show_of_table(); // debug code: show the status of of_table
@@ -282,7 +315,6 @@ int sys_close(int filehandle){
 int sys_dup2(int filehandle, int newhandle){
     /* returned value */
     int result = 0;
-    int of_index;
 
     /* check filehandles are large than 0 and filehandle exists*/
     if (filehandle < 0 || newhandle <0 || curproc->fd_tbl->availability[filehandle] == FREE){
@@ -298,22 +330,27 @@ int sys_dup2(int filehandle, int newhandle){
     if (curproc->fd_tbl->availability[newhandle]){
         /* close the current vnode */
         int of_index = curproc->fd_tbl->of_ptr[newhandle];
-        if (cur_of_table[of_index]->refcount > 1){
-            cur_of_table[of_index]->refcount--；
+        if (cur_of_table->refcount[of_index] > 1){
+            cur_of_table->refcount[of_index]--;
         }
         else{
             if (push_of_empty_free_slot(cur_of_table, of_index) == -1){
                 return ENFILE; /* return too many global open files */
             }
             cur_of_table->availability[of_index] = FREE; /* set entry free */
-            vfs_close(&cur_of_table[of_index]->vptr); /* free the vnode */
+            vfs_close(cur_of_table->v_ptr[of_index]); /* free the vnode */
         }
         
         /* make the second fd point to first one */
-        curproc->fd_tbl->ofptr[newhandle] = curproc->fd_tbl->of_ptr[filehandle];
+        curproc->fd_tbl->of_ptr[newhandle] = curproc->fd_tbl->of_ptr[filehandle];
         /* find the entry in of_table of first fd */
-        int of_index = curproc->fd_tbl->of_ptr[filehandle];
-        cur_of_table[of_index]->refcount++;
+        of_index = curproc->fd_tbl->of_ptr[filehandle];
+        cur_of_table->refcount[of_index]++;
+    }
+    else{
+        curproc->fd_tbl->of_ptr[newhandle] = curproc->fd_tbl->of_ptr[filehandle];
+        curproc->fd_tbl->availability[newhandle] = OCCUPIED;
+        cur_of_table->refcount[filehandle]++;
     }
 
     return result;
@@ -323,7 +360,7 @@ int sys_dup2(int filehandle, int newhandle){
 struct fd_table * create_fd_table(void){
     struct fd_table * fd = kmalloc(sizeof(struct fd_table));
     KASSERT(fd != NULL);
-    fd->ofptr = kmalloc(sizeof(int) * OPEN_MAX2);
+    fd->of_ptr = kmalloc(sizeof(int) * OPEN_MAX2);
     fd->free_slots = kmalloc(sizeof(int) * OPEN_MAX2);
     fd->availability= kmalloc(sizeof(int8_t) * OPEN_MAX2);
     fd->size = 0;
@@ -449,6 +486,6 @@ void show_fd_table(void){
     for (i = 0; i < OPEN_MAX2; i++){
         kprintf("position %d: ", i);
         if (table->availability[i] == FREE) kprintf("free\n");
-        else    kprintf("ofptr = %d\n", table->ofptr[i]);
+        else    kprintf("ofptr = %d\n", table->of_ptr[i]);
     }
 }
