@@ -97,6 +97,22 @@ runprogram(char *progname)
 		return result;
 	}
 
+	curproc->fd_tbl = create_fd_table(); // is the current process the same as the process in user mode?
+	// I can't find the source code of enter_new_process()
+	// Yes, this is the same process. Proved by printf below and printf the same things in syscall (sys_write)
+	//kprintf("address of curproc == %x\n", (unsigned int) curproc);
+	//kprintf("proc name = %s\n", curproc->p_name);
+
+	cur_of_table = create_of_table();
+
+	char c0[] = "con:";
+	char c1[] = "con:";
+	char c2[] = "con:";
+	int fd[3];
+	fd[0] = sys_open(c0, O_WRONLY, 0); // what does the mode do?
+	fd[1] = sys_open(c1, O_WRONLY, 0); // what does the mode do?
+	fd[2] = sys_open(c2, O_WRONLY, 0); // what does the mode do?
+
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  NULL /*userspace addr of environment*/,
