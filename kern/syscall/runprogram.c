@@ -108,12 +108,14 @@ runprogram(char *progname)
 	char c0[] = "con:";
 	char c1[] = "con:";
 	char c2[] = "con:";
+
 	int fd[3];
 	fd[0] = sys_open(c0, O_WRONLY, 0); // what does the mode do?
 	fd[1] = sys_open(c1, O_WRONLY, 0); // what does the mode do?
 	fd[2] = sys_open(c2, O_WRONLY, 0); // what does the mode do?
 
-	sys_close(fd[0]);
+	int console_result = sys_close(fd[0]);
+	//sys_close(fd[0]);
 
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,

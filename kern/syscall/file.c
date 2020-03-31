@@ -184,7 +184,7 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size){
         default:
         return EBADF;
     }
-    
+
     // initialize uio
     struct iovec *iov = kmalloc(sizeof(struct iovec));
     struct uio *u = kmalloc(sizeof(struct uio)); 
@@ -405,7 +405,7 @@ struct of_table * create_of_table(void){
 int queue_pop(int *queue, int *front, int *size){
     (void) queue;
     if (*size > 0){
-        if (++*front >= OPEN_MAX2) *front = 0; // circular increament
+        if (++*front >= OPEN_MAX2) *front = 3; // circular increament
         --*size;
         return 0;
     }
@@ -419,7 +419,7 @@ int queue_front(int *queue, int front, int size){
 int queue_push(int *queue, int *end, int *size, int element){
     if (*size < OPEN_MAX2){
         queue[*end] = element;
-        if (++*end >= OPEN_MAX2) *end = 0; // circular increament
+        if (++*end >= OPEN_MAX2) *end = 3; // circular increament
         ++*size;
         return 0;
     }
