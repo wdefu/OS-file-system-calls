@@ -41,7 +41,7 @@ int sys_open(const char *filename, int flags, mode_t mode){
     struct vnode *v;
     /* copy filename */
     char *filename_copy = kmalloc((strlen(filename) + 5) * sizeof(char));
-    strcopy(filename_copy,filename_copy);
+    strcpy(filename_copy,filename_copy);
      
     /* check whether current of is full of not */
     int of_free_slot = get_of_table_free_slot(cur_of_table);// get free slot from the queue
@@ -70,6 +70,7 @@ int sys_open(const char *filename, int flags, mode_t mode){
     cur_of_table->fp[of_free_slot] = 0;
     cur_of_table->v_ptr[of_free_slot] = v;
     cur_of_table->availability[of_free_slot] = OCCUPIED;
+    cur_of_table->refcount[of_free_slot] = 1
 
     /* update fd table */
     curproc->fd_tbl->ofptr[fd_free_slot] = of_free_slot;
@@ -93,7 +94,7 @@ int sys_read(int filehandle, void *buf, size_t size){
     }
     
     /* check whether buffer is available */
-    if (buf == NULL || size < 0){
+    if ((buf == NULL) || (size < 0)){
         kprintf("the buffer is not available or the size is not available\n");
         return EFAULT;
     }
@@ -134,8 +135,8 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size){
     }
 
     /* check whether buffer is available */
-    if (buf == NULL || size < 0){
-        kprint("the buffer is not available or the size is not available\n");
+    if ((buf == NULL) || (size < 0)){
+        kprintf("the buffer is not available or the size is not available\n");
         return EFAULT;
     }
     // duplicate string
@@ -174,7 +175,7 @@ int sys_lseek(int filehandle, off_t pos, int whence){
     int result = 0;
 
     /* check fd availablity */
-    if (filehandle < 0 || fd >OPEN_MAX2 + 1){
+    if ((filehandle < 0) || (filehandle > OPEN_MAX2 + 1)){
         kprint("unsupported seek object\n");
         return ESPIPE;
     }
@@ -198,7 +199,7 @@ int sys_lseek(int filehandle, off_t pos, int whence){
 
     struct stat cur_file_stat;
     /* get the stat of current file first */
-    result = VOP_STAT(cur_of_table->[v_ptr[of_index]],&cur_file_stat);
+    result = VOP_STAT(cur_of_table->v_ptr[of_index],&cur_file_stat);
     if (result){
         return result;
     }
@@ -228,7 +229,7 @@ int sys_lseek(int filehandle, off_t pos, int whence){
                 return EINVAL;
             }
             cur_of_table->fp[of_index] = cur_file_stat.st_size + pos;
-            break
+            break;
     }
     
     return result;
@@ -248,7 +249,7 @@ int sys_close(int filehandle){
     }
 
     int of_index = curproc->fd_tbl->ofptr[filehandle];
-    if (cur_of_table->availability[if_index] == FREE){
+    if (cur_of_table->availability[of_index] == FREE){
         kprintf("ERROR: of %d is free! can't close\n", of_index);
         return EBADF; /* return bad file number */
     }
@@ -266,8 +267,9 @@ int sys_close(int filehandle){
         if (push_of_empty_free_slot(cur_of_table, of_index) == -1){
             return ENFILE; /* return too many global open files */
         }
+        cur_of_table[of_index]->refcount--;
         cur_of_table->availability[of_index] = FREE; /* set entry free */
-        vfs_close(&cur_of_table[of_index]->vptr); /* free the vnode */
+        vfs_close(&cur_of_table->v_ptr[of_index]); /* free the vnode */
     }
 
     if (IS_DEBUG_FILEDESCRIPTOR) show_of_table(); // debug code: show the status of of_table
@@ -318,6 +320,24 @@ int sys_dup2(int filehandle, int newhandle){
 }
 
 
+struct fd_table * create_fd_table(void){
+    struct fd_table * fd = kmalloc(sizeof(struct fd_table));
+    KASSERT(fd != NULL);
+    fd->ofptr = kmalloc(sizeof(int) * OPEN_MAX2);
+    fd->free_slots = kmalloc(sizeof(int) * OPEN_MAX2);
+    fd->availability= kmalloc(sizeof(int8_t) * OPEN_MAX2);
+    fd->size = 0;
+    fd->front = 0;
+    fd->end = 0;
+
+    int i;
+    for (i = 0; i < OPEN_MAX2; i++){
+        queue_push(fd->free_slots, &(fd->end), &(fd->size), i);
+        fd->availability[i] = FREE;
+    }
+    return fd;
+}
+
 struct of_table * create_of_table(void){
     struct of_table *of = kmalloc(sizeof(struct of_table));
     KASSERT(of != NULL);
@@ -328,12 +348,14 @@ struct of_table * create_of_table(void){
     of->size = 0;
     of->front = 0;
     of->end = 0;
+    of->refcount = kmalloc(sizeof(int) * OPEN_MAX2);
 
     int i;
     for (i = 0; i < OPEN_MAX2; i++){
         queue_push(of->free_slots, &(of->end), &(of->size), i);
         of->availability[i] = FREE;
     }
+
     return of;
 }
 

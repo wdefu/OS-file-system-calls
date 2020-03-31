@@ -40,7 +40,7 @@ struct of_table{
     int size; /* size of current file_des_table */
     int front; /* front of free slot queue */
     int end; /* end of free slot queue */
-    int refcount; /* used for dup2 count */
+    int *refcount; /* used for dup2 count */
 };
 
 
@@ -52,7 +52,7 @@ struct of_table * create_of_table(void);
 
 int sys_open(const char *filename, int flags, mode_t mode);
 int sys_read(int filehandle, void *buf, size_t size);
-int sys_write(int filehandle, const userptr_t buf, size_t size);
+int sys_write(int filehandle, const_userptr_t buf, size_t size);
 int sys_lseek(int filehandle, off_t pos, int code);
 int sys_close(int filehandle);
 int sys_dup2(int filehandle, int newhandle);
