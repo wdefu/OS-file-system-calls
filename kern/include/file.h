@@ -11,22 +11,12 @@
  * Contains some file-related maximum length constants
  */
 #include <limits.h>
+#include <vnode.h>
 
 
 /*
  * Put your function declarations and data types here ...
  */
-
-
-int sys_open(const char *filename, int flags, mode_t mode);
-ssize_t sys_read(int filehandle, void *buf, size_t size);
-ssize_t sys_write(int filehandle, const void *buf, size_t size);
-off_t sys_lseek(int filehandle, off_t pos, int code);
-int sys_close(int filehandle);
-int sys_dup2(int filehandle, int newhandle);
-
-void show_of_table(void);
-void show_fd_table(void);
 
 
 /*
@@ -39,13 +29,11 @@ struct fd_table {
     int size; // number of free slots
     int front; // front of free slot queue
     int end; // end of free slot queue
-
 }
 
-int create_op_table(*op_file_table);
 
 struct of_table{
-   struct vnode **v_ptr;
+    struct vnode **v_ptr;
     off_t *fp; // file pointer. I don't know how this works
     int8_t *availability; // FREE or OCCUPIED: check if v_ptr[i] and fp[i] is free or not
     int *free_slots; // queue of free v_ptr
@@ -57,14 +45,21 @@ struct of_table{
 
 
 struct of_table * cur_of_table;
-/*
- * Put your function declarations and data types here ...
- */
+
 struct fd_table * create_fd_table(void);
 struct of_table * create_of_table(void);
 
+
+int sys_open(const char *filename, int flags, mode_t mode);
+int sys_read(int filehandle, void *buf, size_t size);
+int sys_write(int filehandle, const void *buf, size_t size);
+int sys_lseek(int filehandle, off_t pos, int code);
+int sys_close(int filehandle);
+int sys_dup2(int filehandle, int newhandle);
+
 void show_of_table(void);
 void show_fd_table(void);
+
 
 
 #endif /* _FILE_H_ */

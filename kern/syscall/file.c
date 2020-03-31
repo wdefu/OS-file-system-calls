@@ -82,7 +82,7 @@ int sys_open(const char *filename, int flags, mode_t mode){
 }
 
 
-ssize_t sys_read(int filehandle, void *buf, size_t size){
+int sys_read(int filehandle, void *buf, size_t size){
     /*return value*/
     int result = 0;
 
@@ -123,7 +123,7 @@ ssize_t sys_read(int filehandle, void *buf, size_t size){
 }
 
 
-ssize_t sys_write(int filehandle, const_userptr_t buf, size_t size){
+int sys_write(int filehandle, const_userptr_t buf, size_t size){
     /*return value*/
     int result = 0;
     
@@ -169,7 +169,7 @@ ssize_t sys_write(int filehandle, const_userptr_t buf, size_t size){
     return result;
 }
 
-off_t sys_lseek(int filehandle, off_t pos, int whence){
+int sys_lseek(int filehandle, off_t pos, int whence){
     /* returned value */
     int result = 0;
 
