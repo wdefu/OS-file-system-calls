@@ -51,8 +51,20 @@ main(int argc, char * argv[])
         printf("* closing file\n");
         close(fd);
 
+
+
         printf("**********\n* opening old file \"test.file\"\n");
         fd = open("test.file", O_RDONLY);
+
+        /* code below is used to test dup2 */
+        fd_dup2 = dup2(fd,5);
+        if (fd_dup2 < 0) {
+                printf("ERROR opening file: %s\n", strerror(errno));
+                exit(1);
+        }
+        printf("* open() got fd_dup2 %d\n", fd_dup2);
+        /* code above is used to test dup2 */
+
         printf("* open() got fd %d\n", fd);
         if (fd < 0) {
                 printf("ERROR opening file: %s\n", strerror(errno));
@@ -63,7 +75,9 @@ main(int argc, char * argv[])
         i = 0;
         do  {
                 printf("* attempting read of %d bytes\n", MAX_BUF -i);
-                r = read(fd, &buf[i], MAX_BUF - i);
+                /* subsitute fd with fd_dup2 */
+                r = read(fd_dup2, &buf[i], MAX_BUF - i);
+                //r = read(fd, &buf[i], MAX_BUF - i);
                 printf("* read %d bytes\n", r);
                 i += r;
         } while (i < MAX_BUF && r > 0);
