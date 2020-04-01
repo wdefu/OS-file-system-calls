@@ -234,9 +234,10 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size, int *err){
     return result;
 }
 
-int sys_lseek(int filehandle, off_t *pos, int whence, int *err){
+off_t sys_lseek(int filehandle, off_t pos, int whence, int *err){
     /* returned value */
-    int result = 0;
+    off_t result = 0;
+    *err = 0;
 
     /* check fd availablity */
     if ((filehandle < 0) || (filehandle > OPEN_MAX2 + 1)){
