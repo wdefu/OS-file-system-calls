@@ -111,11 +111,11 @@ syscall(struct trapframe *tf)
 		break;
 
 		case SYS_open:
-		err = sys_open((const char *)tf->tf_a0,(int)tf->tf_a1,(mode_t)tf->tf_a2);
-		retval = err;
-		if(err > 0){
-			err = 0;  // check returned value 
-		}
+		err = sys_open((userptr_t)tf->tf_a0,(int)tf->tf_a1,(mode_t)tf->tf_a2,(int32_t*)&retval);
+		//retval = err;
+		//if(err > 0){
+		//	err = 0;
+		//}
 		break;
 
 		case SYS_read:
@@ -164,6 +164,7 @@ syscall(struct trapframe *tf)
 		 * userlevel to a return value of -1 and the error
 		 * code in errno.
 		 */
+		kprintf("there is a error happend bitch!\n");
 		tf->tf_v0 = err;
 		tf->tf_a3 = 1;      /* signal an error */
 	}

@@ -97,24 +97,43 @@ runprogram(char *progname)
 		return result;
 	}
 
+	/* first create global of table */
+	cur_of_table = create_of_table();
+
 	curproc->fd_tbl = create_fd_table(); // is the current process the same as the process in user mode?
 	// I can't find the source code of enter_new_process()
 	// Yes, this is the same process. Proved by printf below and printf the same things in syscall (sys_write)
 	//kprintf("address of curproc == %x\n", (unsigned int) curproc);
 	//kprintf("proc name = %s\n", curproc->p_name);
 
-	cur_of_table = create_of_table();
+
 
 	char c0[] = "con:";
 	char c1[] = "con:";
 	char c2[] = "con:";
 
-	int fd[3];
-	fd[0] = sys_open(c0, O_WRONLY, 0); // what does the mode do?
-	fd[1] = sys_open(c1, O_WRONLY, 0); // what does the mode do?
-	fd[2] = sys_open(c2, O_WRONLY, 0); // what does the mode do?
+	int32_t fd[3];
+	int err;
+	err = sys_open(c0, O_WRONLY, 0, &fd[0]); // what does the mode do?
+	if(err!=0){
+		kprintf("somethings's wrong\n");
+	}
+	kprintf("returned file handler: %d \n",fd[0]);
+	err = sys_open(c1, O_WRONLY, 0, &fd[1]); // what does the mode do?
+	if(err!=0){
+		kprintf("somethings's wrong\n");
+	}
+	kprintf("returned file handler: %d \n",fd[1]);
+	err = sys_open(c2, O_WRONLY, 0, &fd[2]); // what does the mode do?
+	if(err != 0){
+		kprintf("somethings's wrong\n");
+	}
+	kprintf("returned file handler: %d \n",fd[2]);
 
-	int console_result = sys_close(fd[0]);
+	//int console_result = sys_close(fd[0]);
+	//if (console_result){
+	//	return -1; // test to debug
+	//}
 	//sys_close(fd[0]);
 
 	/* Warp to user mode. */

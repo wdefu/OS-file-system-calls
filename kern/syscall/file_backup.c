@@ -367,10 +367,15 @@ struct fd_table * create_fd_table(void){
     struct fd_table * fd = kmalloc(sizeof(struct fd_table));
     KASSERT(fd != NULL);
     fd->of_ptr = kmalloc(sizeof(int) * OPEN_MAX2);
+    fd->free_slots = kmalloc(sizeof(int) * OPEN_MAX2);
     fd->availability= kmalloc(sizeof(int8_t) * OPEN_MAX2);
+    fd->size = 0;
+    fd->front = 0;
+    fd->end = 0;
 
     int i;
     for (i = 0; i < OPEN_MAX2; i++){
+        queue_push(fd->free_slots, &(fd->end), &(fd->size), i);
         fd->availability[i] = FREE;
     }
     return fd;
@@ -381,13 +386,16 @@ struct of_table * create_of_table(void){
     KASSERT(of != NULL);
     of->fp = kmalloc(sizeof(off_t) * OPEN_MAX2);
     of->v_ptr = kmalloc(sizeof(struct vnode) * OPEN_MAX2);
+    of->free_slots = kmalloc(sizeof(int) * OPEN_MAX2);
     of->availability= kmalloc(sizeof(int8_t) * OPEN_MAX2);
     of->size = 0;
+    of->front = 0;
+    of->end = 0;
     of->refcount = kmalloc(sizeof(int) * OPEN_MAX2);
-    of->mode = kmalloc(sizeof(int) * OPEN_MAX2);
 
     int i;
     for (i = 0; i < OPEN_MAX2; i++){
+        queue_push(of->free_slots, &(of->end), &(of->size), i);
         of->availability[i] = FREE;
     }
 
@@ -399,9 +407,65 @@ struct of_table * create_of_table(void){
 
 
 
+// queue operations
+int queue_pop(int *queue, int *front, int *size){
+    (void) queue;
+    if (*size > 0){
+        if (++*front >= OPEN_MAX2) *front = 3; // circular increament
+        --*size;
+        return 0;
+    }
+    else return -1;
+}
+
+int queue_front(int *queue, int front, int size){
+    return (size > 0) ? queue[front] : -1;
+}
+
+int queue_push(int *queue, int *end, int *size, int element){
+    if (*size < OPEN_MAX2){
+        queue[*end] = element;
+        if (++*end >= OPEN_MAX2) *end = 3; // circular increament
+        ++*size;
+        return 0;
+    }
+    else return -1;
+} 
 
 
+int get_of_table_free_slot(struct of_table *table){
+    int of_free_index = queue_front(table->free_slots, table->front, table->size);
+    if (of_free_index == -1) {
+        kprintf("of table is full\n");
+        return -1;
+    }
+    queue_pop(table->free_slots, &(table->front), &(table->size));
+    int free_slot = table->free_slots[of_free_index];
+    return free_slot;
+}
 
+int get_fd_table_free_slot(struct fd_table *table){
+    int of_free_index = queue_front(table->free_slots, table->front, table->size);
+    if (of_free_index == -1) {
+        kprintf("of table is full\n");
+        return -1;
+    }
+    queue_pop(table->free_slots, &(table->front), &(table->size));
+    int free_slot = table->free_slots[of_free_index];
+    return free_slot;
+}
+
+
+int push_of_empty_free_slot(struct of_table *table, int element){
+    int retval = queue_push(table->free_slots, &(table->end), &(table->size), element);
+    if (retval == -1) kprintf("of table free slot is full, can't push");
+    return retval;
+}
+int push_fd_empty_free_slot(struct fd_table *table, int element){
+    int retval = queue_push(table->free_slots, &(table->end), &(table->size), element);
+    if (retval == -1) kprintf("fd table free slot is full, can't push");
+    return retval;
+}
 
 
 // for debugging: show of table and show fd table

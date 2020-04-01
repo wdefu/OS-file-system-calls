@@ -24,11 +24,7 @@
 */
 struct fd_table {
     int *of_ptr; /* map to the index in of_table */
-    int *free_slots; /* queue of free ofptr */
     int8_t *availability; /* FREE or OCCUPIED: check if ofptr[i] is free or not */
-    int size; /* number of free slots */
-    int front; /* front of free slot queue */
-    int end; /* end of free slot queue */
 };
 
 
@@ -36,10 +32,8 @@ struct of_table{
     struct vnode **v_ptr;
     off_t *fp; /* file pointer. I don't know how this works */
     int8_t *availability; /* FREE or OCCUPIED: check if v_ptr[i] and fp[i] is free or not */
-    int *free_slots; /* queue of free v_ptr */
     int size; /* size of current file_des_table */
-    int front; /* front of free slot queue */
-    int end; /* end of free slot queue */
+    int *mode;
     int *refcount; /* used for dup2 count */
 };
 
@@ -50,7 +44,7 @@ struct fd_table * create_fd_table(void);
 struct of_table * create_of_table(void);
 
 
-int sys_open(const char *filename, int flags, mode_t mode);
+int sys_open(userptr_t filename, int flags, mode_t mode,int32_t *final_handle);
 int sys_read(int filehandle, void *buf, size_t size);
 int sys_write(int filehandle, const_userptr_t buf, size_t size);
 int sys_lseek(int filehandle, off_t pos, int code);
