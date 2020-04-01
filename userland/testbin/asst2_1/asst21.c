@@ -33,9 +33,8 @@ main(int argc, char * argv[])
                 exit(1);
         }
 
-        int fd_dup2 = dup2(fd,5); // test for dup2
-        printf("* writing test string to fd_dup2\n");
-        r = write(fd_dup2, teststr, strlen(teststr)); // here change fd to fd_dup2
+        printf("* writing test string\n");
+        r = write(fd, teststr, strlen(teststr));
         printf("* wrote %d bytes\n", r);
         if (r < 0) {
                 printf("ERROR writing file: %s\n", strerror(errno));
@@ -51,7 +50,6 @@ main(int argc, char * argv[])
         }
         printf("* closing file\n");
         close(fd);
-        close(fd_dup2); // test for dup2
 
 
 
@@ -59,7 +57,7 @@ main(int argc, char * argv[])
         fd = open("test.file", O_RDONLY);
 
         /* code below is used to test dup2 */
-        fd_dup2 = dup2(fd,9);
+        fd_dup2 = dup2(fd,5);
         if (fd_dup2 < 0) {
                 printf("ERROR opening file: %s\n", strerror(errno));
                 exit(1);
