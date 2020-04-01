@@ -116,24 +116,12 @@ runprogram(char *progname)
 	char c0[] = "con:";
 	char c1[] = "con:";
 	char c2[] = "con:";
+	int fd[3];
+	fd[0] = sys_open(c0, O_WRONLY, 0); // what does the mode do?
+	fd[1] = sys_open(c1, O_WRONLY, 0); // what does the mode do?
+	fd[2] = sys_open(c2, O_WRONLY, 0); // what does the mode do?
 
-	int32_t fd[3];
-	int err;
-	err = sys_open(c0, O_WRONLY, 0, &fd[0]); // what does the mode do?
-	if(err!=0){
-		kprintf("somethings's wrong\n");
-	}
-	kprintf("returned file handler: %d \n",fd[0]);
-	err = sys_open(c1, O_WRONLY, 0, &fd[1]); // what does the mode do?
-	if(err!=0){
-		kprintf("somethings's wrong\n");
-	}
-	kprintf("returned file handler: %d \n",fd[1]);
-	err = sys_open(c2, O_WRONLY, 0, &fd[2]); // what does the mode do?
-	if(err != 0){
-		kprintf("somethings's wrong\n");
-	}
-	kprintf("returned file handler: %d \n",fd[2]);
+	sys_close(fd[0]);
 
 	//int console_result = sys_close(fd[0]);
 	//if (console_result){

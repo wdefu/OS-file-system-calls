@@ -33,12 +33,7 @@ int push_of_empty_free_slot(struct of_table *table, int element);
 int push_fd_empty_free_slot(struct fd_table *table, int element);
 
 
-<<<<<<< HEAD
-
-int sys_open(userptr_t filename, int flags, mode_t mode,int32_t *final_handle){
-=======
 int sys_open(const char *filename, int flags, mode_t mode){
->>>>>>> d7e4dd5755c997d0064266e378e2b584faa97b02
     /* if filename is null return error */
     if (filename == NULL){
         return ENOENT; //return not a dir error
@@ -46,18 +41,8 @@ int sys_open(const char *filename, int flags, mode_t mode){
 
     struct vnode *v;
     /* copy filename */
-<<<<<<< HEAD
-    //char *filename_copy = kmalloc((strlen(filename) + 5) * sizeof(char));
-    //strcpy(filename_copy,filename_copy);
-    char filename_copy[NAME_MAX];
-    size_t actual;
-
-    int result_1 = copyinstr(filename, filename_copy, NAME_MAX, &actual);
-	if (result_1) return EFAULT;  
-=======
     char *filename_copy = kmalloc((strlen(filename) + 5) * sizeof(char));
     strcpy(filename_copy, filename);
->>>>>>> d7e4dd5755c997d0064266e378e2b584faa97b02
      
     /* check whether current of is full of not */
     int of_free_slot = get_of_table_free_slot(cur_of_table);// get free slot from the queue
@@ -73,16 +58,12 @@ int sys_open(const char *filename, int flags, mode_t mode){
     
     /*open the vnode*/
     int result = vfs_open(filename_copy,flags,mode,&v);
-    //kfree(filename_copy);
+    kfree(filename_copy);
     if (IS_DEBUG_FILEDESCRIPTOR){
         kprintf("\n\n-----------------opening %s: -------------------\n", filename);
     }
     if (result) {
-<<<<<<< HEAD
-        kprintf("vfs open failed: filename = %s\nflag = %d, mode = %u, error = %d", filename_copy, flags, mode, result);
-=======
         if (DEBUG_MODE) kprintf("vfs open failed: filename = %s\nflag = %d, mode = %u, error = %d", filename, flags, mode, result);
->>>>>>> d7e4dd5755c997d0064266e378e2b584faa97b02
         return result;
     }
     //kprintf("I am still alive\n");
@@ -100,8 +81,7 @@ int sys_open(const char *filename, int flags, mode_t mode){
     if (IS_DEBUG_FILEDESCRIPTOR) show_of_table(); // debug code: show the status of of_table
     if (IS_DEBUG_FILEDESCRIPTOR) show_fd_table(); // debug code: show the status of fd_table
 
-    *final_handle = fd_free_slot; 
-    return result;   
+    return fd_free_slot;   
 }
 
 
@@ -220,12 +200,8 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size, int *err){
         *err = EBADF;
         return -1;
     }
-<<<<<<< HEAD
-
-=======
     
     
->>>>>>> d7e4dd5755c997d0064266e378e2b584faa97b02
     // initialize uio
     struct iovec *iov = kmalloc(sizeof(struct iovec));
     struct uio *u = kmalloc(sizeof(struct uio)); 
@@ -402,10 +378,15 @@ struct fd_table * create_fd_table(void){
     struct fd_table * fd = kmalloc(sizeof(struct fd_table));
     KASSERT(fd != NULL);
     fd->of_ptr = kmalloc(sizeof(int) * OPEN_MAX2);
+    fd->free_slots = kmalloc(sizeof(int) * OPEN_MAX2);
     fd->availability= kmalloc(sizeof(int8_t) * OPEN_MAX2);
+    fd->size = 0;
+    fd->front = 0;
+    fd->end = 0;
 
     int i;
     for (i = 0; i < OPEN_MAX2; i++){
+        queue_push(fd->free_slots, &(fd->end), &(fd->size), i);
         fd->availability[i] = FREE;
     }
     return fd;
@@ -416,18 +397,17 @@ struct of_table * create_of_table(void){
     KASSERT(of != NULL);
     of->fp = kmalloc(sizeof(off_t) * OPEN_MAX2);
     of->v_ptr = kmalloc(sizeof(struct vnode) * OPEN_MAX2);
-<<<<<<< HEAD
-=======
     of->flags = kmalloc(sizeof(mode_t) * OPEN_MAX2);
     of->free_slots = kmalloc(sizeof(int) * OPEN_MAX2);
->>>>>>> d7e4dd5755c997d0064266e378e2b584faa97b02
     of->availability= kmalloc(sizeof(int8_t) * OPEN_MAX2);
     of->size = 0;
+    of->front = 0;
+    of->end = 0;
     of->refcount = kmalloc(sizeof(int) * OPEN_MAX2);
-    of->mode = kmalloc(sizeof(int) * OPEN_MAX2);
 
     int i;
     for (i = 0; i < OPEN_MAX2; i++){
+        queue_push(of->free_slots, &(of->end), &(of->size), i);
         of->availability[i] = FREE;
     }
 
@@ -439,12 +419,32 @@ struct of_table * create_of_table(void){
 
 
 
+// queue operations
+int queue_pop(int *queue, int *front, int *size){
+    (void) queue;
+    if (*size > 0){
+        if (++*front >= OPEN_MAX2) *front = 0; // circular increament
+        --*size;
+        return 0;
+    }
+    else return -1;
+}
+
+int queue_front(int *queue, int front, int size){
+    return (size > 0) ? queue[front] : -1;
+}
+
+int queue_push(int *queue, int *end, int *size, int element){
+    if (*size < OPEN_MAX2){
+        queue[*end] = element;
+        if (++*end >= OPEN_MAX2) *end = 0; // circular increament
+        ++*size;
+        return 0;
+    }
+    else return -1;
+} 
 
 
-
-
-<<<<<<< HEAD
-=======
 int get_of_table_free_slot(struct of_table *table){
     int of_free_index = queue_front(table->free_slots, table->front, table->size);
     if (of_free_index == -1) {
@@ -479,7 +479,6 @@ int push_fd_empty_free_slot(struct fd_table *table, int element){
     return retval;
 }
 
->>>>>>> d7e4dd5755c997d0064266e378e2b584faa97b02
 
 // for debugging: show of table and show fd table
 
