@@ -85,27 +85,30 @@ int sys_open(const char *filename, int flags, mode_t mode){
 }
 
 
-int sys_read(int filehandle, void *buf, size_t size){
+int sys_read(int filehandle, void *buf, size_t size, int *err){
     /*return value*/
     int result = 0;
 
     /* check availability of filehandle*/
     if (curproc->fd_tbl->availability[filehandle] == FREE){
         if (DEBUG_MODE) kprintf("can't read fd = %d : this fd is free\n", filehandle);
-        return EBADF;
+        *err = EBADF;
+        return -1;
     }
     
 
     /* check whether buffer is available */
     if (buf == NULL){
         if (DEBUG_MODE) kprintf("the buffer is not available or the size is not available\n");
-        return EFAULT;
+        *err = EFAULT;
+        return -1;
     }
     /* check availability of open file entry */
     int of_index = curproc->fd_tbl->of_ptr[filehandle];
     if (cur_of_table->availability[of_index] == FREE){
         if (DEBUG_MODE) kprintf("can't read of = %d : this of is free\n", of_index);
-        return EBADF;
+        *err = EBADF;
+        return -1;
     }
 
     /* check mode */
@@ -113,7 +116,8 @@ int sys_read(int filehandle, void *buf, size_t size){
     /* get the stat of current file first */
     result = VOP_STAT(cur_of_table->v_ptr[of_index],&cur_file_stat);
     if (result){
-        return result;
+        *err = result;
+        return -1;
     }
     int how = cur_file_stat.st_mode&O_ACCMODE;
     switch(how){
@@ -121,7 +125,8 @@ int sys_read(int filehandle, void *buf, size_t size){
         case O_RDWR:
         break;
         default:
-        return EBADF;
+        *err = EBADF;
+        return -1;
     }
 
     struct iovec *iov = kmalloc(sizeof(struct iovec));
@@ -129,16 +134,19 @@ int sys_read(int filehandle, void *buf, size_t size){
 
     uio_kinit(iov, u, buf, size, cur_of_table->fp[of_index],UIO_READ);
    
-    int err = VOP_READ(cur_of_table->v_ptr[of_index],u);
-    kfree(iov);
-    kfree(u);
-    if (err) {
-        if (DEBUG_MODE) kprintf("some error in read(): retval is %d\n",err);
-        return err;
+    *err = VOP_READ(cur_of_table->v_ptr[of_index],u); 
+    /*check VOP_READ SUCCESS*/
+    if (*err) {
+        if (DEBUG_MODE) kprintf("some error in read(): retval is %d\n",*err);
+        return -1;
     }
     
+    result = u->uio_offset - cur_of_table->fp[of_index];
+    cur_of_table->fp[of_index] = u->uio_offset;
+    kfree(iov);
+    kfree(u);
     /* should add handler for remain of u.uio_resid here */
-    cur_of_table->fp[of_index] += size;
+    //cur_of_table->fp[of_index] += size;
     return result;
 }
 
@@ -208,50 +216,60 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size, int *err){
     uio_kinit(iov, u, (void *)duplicate_str, size, cur_of_table->fp[of_index], UIO_WRITE);
     
     *err = VOP_WRITE(cur_of_table->v_ptr[of_index], u);
-    kfree(duplicate_str);
-    kfree(iov);
-    kfree(u);
     if (*err) {
         if (DEBUG_MODE) kprintf("some error in write(): retval is %d\n", *err);
         return -1;
     }
+
+    /* find the write offset */
+    result = u->uio_offset - cur_of_table->fp[of_index];
+
+    /* update te offset */
+    cur_of_table->fp[of_index] = u->uio_offset;
+    kfree(duplicate_str);
+    kfree(iov);
+    kfree(u);
     //if(filehandle > 2) kprintf("write return size = %d\n", size);
-    cur_of_table->fp[of_index] += size;
+    //cur_of_table->fp[of_index] += size;
     return result;
 }
 
-int sys_lseek(int filehandle, off_t pos, int whence){
+int sys_lseek(int filehandle, off_t *pos, int whence, int *err){
     /* returned value */
     int result = 0;
 
     /* check fd availablity */
     if ((filehandle < 0) || (filehandle > OPEN_MAX2 + 1)){
         if (DEBUG_MODE) kprintf("unsupported seek object\n");
-        return ESPIPE;
+        *err = ESPIPE;
+        return -1;
     }
 
     /* check filehandle exists or not */
     if (curproc->fd_tbl->availability[filehandle] == FREE){
         if (DEBUG_MODE) kprintf("can't read fd = %d : this fd is free\n", filehandle);
-        return EBADF;
+        *err = EBADF;
+        return -1;
     }
 
     int of_index = curproc->fd_tbl->of_ptr[filehandle];
     if (cur_of_table->availability[of_index] == FREE){
         if (DEBUG_MODE) kprintf("can't read of = %d : this of is free\n", of_index);
-        return EBADF;
+        *err = EBADF;
+        return -1;
     }
 
     /* check vnode seekablity */
     if (!VOP_ISSEEKABLE(cur_of_table->v_ptr[of_index])){
-        return ESPIPE;
+        *err = ESPIPE;
+        return -1;
     }
 
     struct stat cur_file_stat;
     /* get the stat of current file first */
-    result = VOP_STAT(cur_of_table->v_ptr[of_index],&cur_file_stat);
-    if (result){
-        return result;
+    *err = VOP_STAT(cur_of_table->v_ptr[of_index],&cur_file_stat);
+    if (*err){
+        return -1;
     }
     
     /* begin to condition */
@@ -268,7 +286,8 @@ int sys_lseek(int filehandle, off_t pos, int whence){
         case SEEK_CUR:
             /* final fp can't be negative */
             if(pos + cur_of_table->fp[of_index] < 0){
-                return EINVAL;
+                *err = EINVAL;
+                return -1;
             }
             cur_of_table->fp[of_index] += pos;
             break;
@@ -276,12 +295,13 @@ int sys_lseek(int filehandle, off_t pos, int whence){
         case SEEK_END:
             /* final fp can't be negative */
             if(cur_file_stat.st_size + pos < 0){
-                return EINVAL;
+                *err = EINVAL;
+                return -1;
             }
             cur_of_table->fp[of_index] = cur_file_stat.st_size + pos;
             break;
     }
-    
+    result = cur_of_table->fp[of_index];
     return result;
 }
 

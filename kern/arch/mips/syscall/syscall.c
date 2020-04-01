@@ -111,16 +111,16 @@ syscall(struct trapframe *tf)
 		break;
 
 		case SYS_open:
-		err = sys_open((userptr_t)tf->tf_a0,(int)tf->tf_a1,(mode_t)tf->tf_a2,(int32_t*)&retval);
-		//retval = err;
-		//if(err > 0){
-		//	err = 0;
-		//}
+		err = sys_open((const char *)tf->tf_a0,(int)tf->tf_a1,(mode_t)tf->tf_a2);
+		retval = err;
+		if(err > 0){
+			err = 0;
+		}
 		break;
 
 		case SYS_read:
-		err = sys_read((int)tf->tf_a0,(void *)tf->tf_a1,(size_t)tf->tf_a2);
-		retval = tf->tf_a2;
+		retval = sys_read((int)tf->tf_a0,(void *)tf->tf_a1,(size_t)tf->tf_a2, &err);
+		//retval = tf->tf_a2;
 		if (err >= 0){
 			err = 0;
 		}
@@ -129,14 +129,16 @@ syscall(struct trapframe *tf)
 		case SYS_write:
 		retval = sys_write((int)tf->tf_a0,(const_userptr_t)tf->tf_a1,(size_t)tf->tf_a2, &err);
 		//retval = tf->tf_a2;
-		//if (err >= 0){
-		//	err = 0;
-		//}
+		if(retval >= 0){
+			err = 0;
+		}
 		break;
 
 		case SYS_lseek:
-		err = sys_lseek((int)tf->tf_a0,(off_t)tf->tf_a1,(int)tf->tf_a2);
-		retval = tf->tf_a1;
+		retval = sys_lseek((int)tf->tf_a0,(off_t)tf->tf_a1,(int)tf->tf_a2, &err);
+		if(retval >= 0){
+			err = 0;
+		}
 		break;
 
 		case SYS_close:
@@ -165,6 +167,7 @@ syscall(struct trapframe *tf)
 		 * code in errno.
 		 */
 		kprintf("there is a error happend bitch!\n");
+		kprintf("this is error number:%d\n",err);
 		tf->tf_v0 = err;
 		tf->tf_a3 = 1;      /* signal an error */
 	}
