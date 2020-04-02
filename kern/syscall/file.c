@@ -376,7 +376,8 @@ int sys_close(int filehandle){
         /* close the vnode */
         vfs_close(cur_of_table->v_ptr[of_index]); /* free the vnode */
     }
-    /* release the lock seeking reading */
+
+    /* release the lock after seeking */
     if (cur_of_table->availability[of_index] == FREE){
             lock_release(cur_of_table->op_lock[of_index]);
             lock_destroy(cur_of_table->op_lock[of_index]);
@@ -424,6 +425,8 @@ int sys_dup2(int filehandle, int newhandle){
             cur_of_table->availability[of_index] = FREE; /* set entry free */
             vfs_close(cur_of_table->v_ptr[of_index]); /* free the vnode */
         }
+
+        /* destroy lock or release it */
         if (cur_of_table->availability[of_index] == FREE){
             lock_release(cur_of_table->op_lock[of_index]);
             lock_destroy(cur_of_table->op_lock[of_index]);
