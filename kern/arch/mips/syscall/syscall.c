@@ -177,8 +177,8 @@ syscall(struct trapframe *tf)
 		 * userlevel to a return value of -1 and the error
 		 * code in errno.
 		 */
-		kprintf("there is a error happend bitch!\n");
-		kprintf("this is error number:%d\n",err);
+		//kprintf("there is a error happend!\n");
+		//kprintf("this is error number:%d\n",err);
 		tf->tf_v0 = err;
 		tf->tf_a3 = 1;      /* signal an error */
 	}

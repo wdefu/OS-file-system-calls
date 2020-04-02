@@ -12,6 +12,7 @@
  */
 #include <limits.h>
 #include <vnode.h>
+#include <synch.h>
 
 
 /*
@@ -42,6 +43,7 @@ struct of_table{
     int front; /* front of free slot queue */
     int end; /* end of free slot queue */
     int *refcount; /* used for dup2 count */
+    struct lock **op_lock; /* lock for every op */
 };
 
 

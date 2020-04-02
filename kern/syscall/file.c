@@ -55,6 +55,14 @@ int sys_open(const char *filename, int flags, mode_t mode){
     if (fd_free_slot == -1){
         return EMFILE; // fd_table is full
     };
+
+    /* create the lock */
+    cur_of_table->op_lock[of_free_slot] = lock_create(filename_copy);
+    /* check the lock status */
+    if (cur_of_table->op_lock[of_free_slot]== NULL) {
+        kprintf("lock fail to be created.\n");
+        return ENOMEM;
+    }
     
     /*open the vnode*/
     int result = vfs_open(filename_copy,flags,mode,&v);
@@ -64,6 +72,7 @@ int sys_open(const char *filename, int flags, mode_t mode){
     }
     if (result) {
         if (DEBUG_MODE) kprintf("vfs open failed: filename = %s\nflag = %d, mode = %u, error = %d", filename, flags, mode, result);
+        lock_destroy(cur_of_table->op_lock[of_free_slot]);
         return result;
     }
     //kprintf("I am still alive\n");
@@ -133,6 +142,9 @@ int sys_read(int filehandle, void *buf, size_t size, int *err){
     struct uio *u = kmalloc(sizeof(struct uio));
 
     uio_kinit(iov, u, buf, size, cur_of_table->fp[of_index],UIO_READ);
+
+    /* acquire lock before read the file */
+    lock_acquire(cur_of_table->op_lock[of_index]);
    
     *err = VOP_READ(cur_of_table->v_ptr[of_index],u); 
     /*check VOP_READ SUCCESS*/
@@ -143,6 +155,10 @@ int sys_read(int filehandle, void *buf, size_t size, int *err){
     
     result = u->uio_offset - cur_of_table->fp[of_index];
     cur_of_table->fp[of_index] = u->uio_offset;
+
+    /* release the lock after reading */
+    lock_release(cur_of_table->op_lock[of_index]);
+
     kfree(iov);
     kfree(u);
     /* should add handler for remain of u.uio_resid here */
@@ -210,6 +226,9 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size, int *err){
     }
     
     
+    /* acquire lock before write to the file */
+    lock_acquire(cur_of_table->op_lock[of_index]);
+    
     // initialize uio
     struct iovec *iov = kmalloc(sizeof(struct iovec));
     struct uio *u = kmalloc(sizeof(struct uio)); 
@@ -226,6 +245,10 @@ int sys_write(int filehandle, const_userptr_t buf, size_t size, int *err){
 
     /* update te offset */
     cur_of_table->fp[of_index] = u->uio_offset;
+
+    /* release the lock after writing */
+    lock_release(cur_of_table->op_lock[of_index]);
+
     kfree(duplicate_str);
     kfree(iov);
     kfree(u);
@@ -266,6 +289,9 @@ off_t sys_lseek(int filehandle, off_t pos, int whence, int *err){
         return -1;
     }
 
+    /* acquire lock before seeking the file */
+    lock_acquire(cur_of_table->op_lock[of_index]);
+
     struct stat cur_file_stat;
     /* get the stat of current file first */
     *err = VOP_STAT(cur_of_table->v_ptr[of_index],&cur_file_stat);
@@ -303,6 +329,9 @@ off_t sys_lseek(int filehandle, off_t pos, int whence, int *err){
             break;
     }
     result = cur_of_table->fp[of_index];
+
+    /* release the lock seeking reading */
+    lock_release(cur_of_table->op_lock[of_index]);
     return result;
 }
 
@@ -330,6 +359,9 @@ int sys_close(int filehandle){
     }
     curproc->fd_tbl->availability[filehandle] = FREE;
 
+    /* acquire lock before read the file */
+    lock_acquire(cur_of_table->op_lock[of_index]);
+
     /* check the reference count of curr entry */
     if (cur_of_table->refcount[of_index] > 1){
         cur_of_table->refcount[of_index] --;
@@ -340,7 +372,17 @@ int sys_close(int filehandle){
         }
         cur_of_table->refcount[of_index]--;
         cur_of_table->availability[of_index] = FREE; /* set entry free */
+        /* release the lock seeking reading */
+        /* close the vnode */
         vfs_close(cur_of_table->v_ptr[of_index]); /* free the vnode */
+    }
+    /* release the lock seeking reading */
+    if (cur_of_table->availability[of_index] == FREE){
+            lock_release(cur_of_table->op_lock[of_index]);
+            lock_destroy(cur_of_table->op_lock[of_index]);
+    }
+    else{
+        lock_release(cur_of_table->op_lock[of_index]);
     }
 
     if (IS_DEBUG_FILEDESCRIPTOR) show_of_table(); // debug code: show the status of of_table
@@ -368,6 +410,10 @@ int sys_dup2(int filehandle, int newhandle){
     if (curproc->fd_tbl->availability[newhandle]){
         /* close the current vnode */
         int of_index = curproc->fd_tbl->of_ptr[newhandle];
+
+        /* acquire lock before close the file */
+        lock_acquire(cur_of_table->op_lock[of_index]);
+
         if (cur_of_table->refcount[of_index] > 1){
             cur_of_table->refcount[of_index]--;
         }
@@ -377,6 +423,13 @@ int sys_dup2(int filehandle, int newhandle){
             }
             cur_of_table->availability[of_index] = FREE; /* set entry free */
             vfs_close(cur_of_table->v_ptr[of_index]); /* free the vnode */
+        }
+        if (cur_of_table->availability[of_index] == FREE){
+            lock_release(cur_of_table->op_lock[of_index]);
+            lock_destroy(cur_of_table->op_lock[of_index]);
+        }
+        else{
+            lock_release(cur_of_table->op_lock[of_index]);
         }
         
         /* make the second fd point to first one */
@@ -425,6 +478,7 @@ struct of_table * create_of_table(void){
     of->front = 0;
     of->end = 0;
     of->refcount = kmalloc(sizeof(int) * OPEN_MAX2);
+    of->op_lock = kmalloc(sizeof(struct lock) * OPEN_MAX2);
 
     int i;
     for (i = 0; i < OPEN_MAX2; i++){
